@@ -1,0 +1,228 @@
+@startuml agents
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+
+' ─────────────────────────────────────────
+' Enums
+' ─────────────────────────────────────────
+
+enum Resource {
+    Food
+    Linemate
+    Deraumere
+    Sibur
+    Mendiane
+    Phiras
+    Thystame
+    Count
+}
+
+enum AgentType {
+    Pioneer
+    Worker
+    Bodyguard
+    Ritualist
+    Chaos
+}
+
+' ─────────────────────────────────────────
+' Data structs
+' ─────────────────────────────────────────
+
+class BroadcastMsg <<struct>> {
+    + code : int
+    + sender : int
+    + msgCount : int
+    + payload : string
+}
+
+class BroadcastEvent <<struct>> {
+    + dir : int
+    + msg : BroadcastMsg
+}
+
+class ParentReplyMsg <<struct>> {
+    + x : int
+    + y : int
+    + newbornId : int
+}
+
+' ─────────────────────────────────────────
+' State
+' ─────────────────────────────────────────
+
+class Inventory {
+    - _items : array<int, RESOURCE_COUNT>
+    --
+    + Inventory()
+    + get(r : Resource) : int
+    + set(r : Resource, quantity : int) : void
+    + add(r : Resource, quantity : int) : void
+}
+
+' ─────────────────────────────────────────
+' Network
+' ─────────────────────────────────────────
+
+class Connection {
+    - _host : string
+    - _port : int
+    - _fd : int
+    - _readBuf : string
+    - _writeBuf : string
+    --
+    + Connection(host : string, port : int)
+    + connect() : void
+    + readLine() : string
+    + sendLine(cmd : string) : void
+    - _fill() : void
+    - _flush() : void
+}
+
+' ─────────────────────────────────────────
+' Broadcast hierarchy
+' ─────────────────────────────────────────
+
+class broadcast {
+    # _key : string
+    # _agentId : int
+    # _msgCount : int
+    # _knownAgents : unordered_map<int,int>
+    --
+    + broadcast()
+    + broadcast(teamName : string)
+    + setTeamName(teamName : string) : void
+    + setAgentId(id : int) : void
+    + encode(msg : string) : string
+    + decode(msg : string) : string
+    + parse(raw : string) : optional<BroadcastMsg>
+    + mkParentReply(id, x, y, newbornId : int) : string
+    + parseParentReply(msg : BroadcastMsg) : ParentReplyMsg
+    # {virtual} _cipher(str : string, inverse : bool) : string
+}
+
+class broadcast_early {
+    --
+    + broadcast_early()
+    + broadcast_early(teamName : string)
+    + mkInit(id : int, lvl : int) : string
+    + mkLevel(id : int, lvl : int) : string
+    + mkBorn(id : int) : string
+    - _cipher(str : string, inverse : bool) : string
+}
+
+class broadcast_late {
+    --
+    + broadcast_late()
+    + broadcast_late(teamName : string)
+    + mkWhoIsAlive(id : int) : string
+    + mkAlive(id : int, type : AgentType) : string
+    + mkDead(id, x, y : int, type : AgentType) : string
+    + mkBorn(id : int, type : AgentType) : string
+    + mkWant(id, x, y : int, r : Resource, qty : int) : string
+    + mkPositiveReply(id : int, type : AgentType, x, y, dest : int) : string
+    + mkEnemy(id, xm, ym : int) : string
+    + mkRitualReady(id : int, lvl : int) : string
+    # _cipher(str : string, inverse : bool) : string
+}
+
+broadcast_early --|> broadcast
+broadcast_late  --|> broadcast
+
+' ─────────────────────────────────────────
+' Role hierarchy
+' ─────────────────────────────────────────
+
+abstract class ARole {
+    --
+    + {abstract} tick(agent : Agent) : void
+}
+
+class Pioneer {
+    --
+    + tick(agent : Agent) : void
+}
+
+class Worker <<stub>> {
+    --
+    + tick(agent : Agent) : void
+}
+
+class Bodyguard <<stub>> {
+    --
+    + tick(agent : Agent) : void
+}
+
+class Ritualist <<stub>> {
+    --
+    + tick(agent : Agent) : void
+}
+
+class Chaos <<stub>> {
+    --
+    + tick(agent : Agent) : void
+}
+
+Pioneer   --|> ARole
+Worker    --|> ARole
+Bodyguard --|> ARole
+Ritualist --|> ARole
+Chaos     --|> ARole
+
+' ─────────────────────────────────────────
+' Agent (central class)
+' ─────────────────────────────────────────
+
+class Agent {
+    - _teamName : string
+    - _posX : int
+    - _posY : int
+    - _lvl : int
+    - _mapX : int
+    - _mapY : int
+    - _ID : int
+    --
+    + Agent(host : string, port : int, teamName : string)
+    + run() : void
+    + conn() : Connection&
+    + inventory() : Inventory&
+    + broadcastProtocol() : broadcast&
+    + level() : int
+    + posX() : int
+    + posY() : int
+    + mapX() : int
+    + mapY() : int
+    + ID() : int
+    + setID(id : int) : void
+    + setPos(x : int, y : int) : void
+    + setLevel(lvl : int) : void
+    + setMap(x : int, y : int) : void
+    + teamName() : string&
+    + setRole(role : unique_ptr<ARole>) : void
+    + feedBroadcast(dir : int, raw : string) : void
+    + pollBroadcast() : optional<BroadcastEvent>
+    - _applyBroadcast(ev : BroadcastEvent) : void
+}
+
+' ─────────────────────────────────────────
+' Composition links
+' ─────────────────────────────────────────
+
+Agent *-- "1" Connection          : _connection
+Agent *-- "1" Inventory           : _inventory
+Agent *-- "1" broadcast           : _broadcastProtocol
+Agent *-- "0..*" BroadcastEvent   : _broadcastQueue
+Agent o-- "0..1" ARole            : _role
+
+BroadcastEvent *-- BroadcastMsg
+
+broadcast ..> BroadcastMsg        : creates
+broadcast ..> ParentReplyMsg      : creates
+
+broadcast_late ..> AgentType      : uses
+broadcast_late ..> Resource       : uses
+
+Inventory ..> Resource            : uses
+
+@enduml

@@ -1,0 +1,52 @@
+name: CI & Push to Epitech
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libraylib-dev libgl-dev libx11-dev
+
+      - name: Build all
+        run: make all
+
+  tests:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libraylib-dev libgl-dev libx11-dev
+
+      - name: Build
+        run: make all
+
+      - name: Run tests
+        run: |
+          echo "No tests configured yet — add your test commands here"
+          # make tests
+          # ./run_tests.sh
+          # etc.
+
+  push-to-epitech:
+    runs-on: ubuntu-latest
+    needs: [build, tests]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Epitech repo
+        run: |
+          git remote add epitech https://x-access-token:${{ secrets.EPITECH_REPO_PAT }}@github.com/EpitechPGE2-2025/G-YEP-400-TLS-4-1-zappy-5.git
+          git push epitech main --force
